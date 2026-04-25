@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>環遊世界</title>
+    <title>我的世界旅跡</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -14,8 +14,14 @@
         body { margin: 0; font-family: "Microsoft JhengHei", sans-serif; overflow: hidden; background: #f5f6fa; }
         #map { height: 100vh; width: 100vw; background: #d1ecf1; }
         
-        /* 點選模式時的游標樣式 */
-        #map.picking-mode .leaflet-interactive { cursor: crosshair !important; }
+        /* --- 強制游標與點擊穿透方案 --- */
+        #map.picking-mode { cursor: crosshair !important; }
+        
+        /* 當處於 picking-mode 時，強制所有地圖路徑（國家）不響應滑鼠事件 */
+        #map.picking-mode .leaflet-interactive { 
+            pointer-events: none !important; 
+            cursor: crosshair !important; 
+        }
 
         #loader {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -207,7 +213,7 @@ document.querySelectorAll('.collapsible').forEach(button => {
     });
 });
 
-// --- 核心修正：點選模式邏輯 (包含游標控制) ---
+// --- 核心修正：強效點選模式開關 ---
 function setMode(mode) {
     currentMode = mode;
     document.getElementById('mode-click').style.background = (mode === 'click' ? 'var(--primary)' : '#7f8c8d');
@@ -216,8 +222,7 @@ function setMode(mode) {
     const mapDiv = document.getElementById('map');
     if(mode === 'click') {
         document.getElementById('click-tip').style.display = 'block';
-        mapDiv.classList.add('picking-mode'); // 加入 CSS class 改變游標
-        // 徹底禁用國家圖層互動，避免手型出現
+        mapDiv.classList.add('picking-mode'); // CSS 將會禁用 .leaflet-interactive 的事件
         if (geoLayer) geoLayer.setStyle({ interactive: false });
         setTimeout(closePanel, 300);
     } else {
@@ -238,7 +243,7 @@ map.on('click', (e) => {
             poiBtn.classList.add('active');
             poiBtn.nextElementSibling.style.maxHeight = poiBtn.nextElementSibling.scrollHeight + "px";
         }
-        setMode('manual'); // 點完自動切回，恢復手型功能
+        setMode('manual'); 
     } else {
         if (window.innerWidth <= 768) closePanel();
         closeAllTools();
@@ -252,6 +257,8 @@ fetch('https://raw.githubusercontent.com/datasets/geo-boundaries-world-110m/mast
         geoLayer = L.geoJson(data, { 
             style: styleFunc, 
             onEachFeature: (f, l) => { l.on('click', (e) => { 
+                // 如果在點選模式，此事件不應觸發，但為了保險再擋一次
+                if (currentMode === 'click') return;
                 L.DomEvent.stopPropagation(e); 
                 closeAllTools(); 
                 showPopup(e.latlng, f.properties.name); 
@@ -263,16 +270,24 @@ fetch('https://raw.githubusercontent.com/datasets/geo-boundaries-world-110m/mast
 
 function styleFunc(feature) { 
     const isVisited = visitedCountries.some(c => c.originalName === feature.properties.name);
-    return { fillColor: isVisited ? mapSettings.visitColor : "#e9e9e9", weight: 1, color: "#ffffff", fillOpacity: 1, interactive: true }; 
+    return { 
+        fillColor: isVisited ? mapSettings.visitColor : "#e9e9e9", 
+        weight: 1, 
+        color: "#ffffff", 
+        fillOpacity: 1, 
+        interactive: true 
+    }; 
 }
 
 function showPopup(latlng, originalName) {
+    if (currentMode === 'click') return; // 第三道防線
     const v = visitedCountries.find(c => c.originalName === originalName);
     const dName = v ? v.customName : originalName;
     L.popup().setLatLng(latlng).setContent(`<strong>${dName}</strong><br><button class="popup-btn" onclick="toggleCountry('${originalName}')">${v ? "❌ 移除足跡" : "✅ 標記足跡"}</button>`).openOn(map);
 }
 
 function toggleCountry(originalName) {
+    if (currentMode === 'click') return; // 第四道防線
     const idx = visitedCountries.findIndex(c => c.originalName === originalName);
     if (idx > -1) visitedCountries.splice(idx, 1);
     else visitedCountries.push({ originalName: originalName, customName: originalName });
@@ -313,7 +328,7 @@ function drawSmartLabels() {
 
 function addNewPOI() {
     const n = document.getElementById('poi-name').value, lt = parseFloat(document.getElementById('poi-lat').value), lg = parseFloat(document.getElementById('poi-lng').value);
-    if (!n || isNaN(lt) || isNaN(lg)) return alert("不完整！");
+    if (!n || isNaN(lt) || isNaN(lg)) return alert("資訊不完整！");
     customPOIs.push({ name: n, coords: [lt, lg] });
     if (!visitedCountries.some(v => v.originalName === n)) visitedCountries.push({ originalName: n, customName: n });
     saveData(); updateUI(); 
@@ -325,7 +340,12 @@ function drawMarkers() {
     poiLayers.clearLayers();
     customPOIs.forEach(poi => {
         const v = visitedCountries.some(v => v.originalName === poi.name);
-        L.circleMarker(poi.coords, { radius: 3, fillColor: v ? mapSettings.visitColor : "#e9e9e9", color: mapSettings.visitColor, weight: 1, fillOpacity: 1 }).addTo(poiLayers).on('click', (e) => { L.DomEvent.stopPropagation(e); closeAllTools(); showPopup(poi.coords, poi.name); });
+        L.circleMarker(poi.coords, { radius: 3, fillColor: v ? mapSettings.visitColor : "#e9e9e9", color: mapSettings.visitColor, weight: 1, fillOpacity: 1 }).addTo(poiLayers).on('click', (e) => { 
+            if (currentMode === 'click') return;
+            L.DomEvent.stopPropagation(e); 
+            closeAllTools(); 
+            showPopup(poi.coords, poi.name); 
+        });
     });
 }
 
