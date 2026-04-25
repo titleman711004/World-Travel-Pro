@@ -133,8 +133,8 @@
                     <button id="mode-click" class="btn-top" style="background:var(--primary); flex:1;" onclick="setMode('click')">📍 點選</button>
                     <button id="mode-manual" class="btn-top" style="background:#7f8c8d; flex:1;" onclick="setMode('manual')">⌨️ 手動</button>
                 </div>
-                <p id="click-tip" style="font-size: 11px; color: #e67e22; margin: 0 0 8px 0; display: none;">* 面板已暫時收合，請在地圖點擊位置</p>
-                <input type="text" id="poi-name" placeholder="地點名稱" style="width:100%; padding:10px; margin-bottom:5px; border: 1px solid #ddd;">
+                <p id="click-tip" style="font-size: 11px; color: #e67e22; margin: 0 0 8px 0; display: none;">* 已暫停國家點擊功能，請直接點選地圖</p>
+                <input type="text" id="poi-name" placeholder="名稱 (如：澳門)" style="width:100%; padding:10px; margin-bottom:5px; border: 1px solid #ddd;">
                 <div id="manual-inputs">
                     <div class="input-row">
                         <input type="number" id="poi-lat" step="any" placeholder="緯度">
@@ -198,38 +198,9 @@ poiLayers.addTo(map); labelLayer.addTo(map); lineLayer.addTo(map);
 
 // --- 面板邏輯 ---
 function toggleFootprint() { document.getElementById('footprint-panel').classList.toggle('active'); closeAllTools(); }
-
-function togglePanel() { 
-    const panel = document.getElementById('ui-panel');
-    const trigger = document.getElementById('mobile-trigger');
-    if (window.innerWidth <= 768) {
-        panel.classList.toggle('open');
-        trigger.style.display = panel.classList.contains('open') ? 'none' : 'flex';
-    } else {
-        panel.classList.toggle('collapsed');
-    }
-}
-
-function openPanel() {
-    const panel = document.getElementById('ui-panel');
-    if (window.innerWidth <= 768) {
-        panel.classList.add('open');
-        document.getElementById('mobile-trigger').style.display = 'none';
-    } else {
-        panel.classList.remove('collapsed');
-    }
-}
-
-function closePanel() {
-    const panel = document.getElementById('ui-panel');
-    if (window.innerWidth <= 768) {
-        panel.classList.remove('open');
-        document.getElementById('mobile-trigger').style.display = 'flex';
-    } else {
-        panel.classList.add('collapsed');
-    }
-}
-
+function togglePanel() { const p = document.getElementById('ui-panel'); if (window.innerWidth <= 768) p.classList.toggle('open'); else p.classList.toggle('collapsed'); }
+function openPanel() { const p = document.getElementById('ui-panel'); if (window.innerWidth <= 768) { p.classList.add('open'); document.getElementById('mobile-trigger').style.display = 'none'; } else { p.classList.remove('collapsed'); } }
+function closePanel() { const p = document.getElementById('ui-panel'); if (window.innerWidth <= 768) { p.classList.remove('open'); document.getElementById('mobile-trigger').style.display = 'flex'; } else { p.classList.add('collapsed'); } }
 function closeAllTools() { document.querySelectorAll('.collapsible').forEach(btn => { btn.classList.remove('active'); btn.nextElementSibling.style.maxHeight = null; }); }
 
 document.querySelectorAll('.collapsible').forEach(button => {
@@ -241,7 +212,7 @@ document.querySelectorAll('.collapsible').forEach(button => {
     });
 });
 
-// --- 模式切換修正 ---
+// --- 核心修正：點選模式邏輯 ---
 function setMode(mode) {
     currentMode = mode;
     document.getElementById('mode-click').style.background = (mode === 'click' ? 'var(--primary)' : '#7f8c8d');
@@ -249,20 +220,20 @@ function setMode(mode) {
     
     if(mode === 'click') {
         document.getElementById('click-tip').style.display = 'block';
-        // 核心邏輯：點選模式開啟時，自動縮小工具面板，方便點擊地圖
+        // 暫停國家的互動事件
+        if (geoLayer) geoLayer.setStyle({ interactive: false });
         setTimeout(closePanel, 300);
     } else {
         document.getElementById('click-tip').style.display = 'none';
+        // 恢復國家的互動事件
+        if (geoLayer) geoLayer.setStyle({ interactive: true });
     }
 }
 
 map.on('click', (e) => { 
     if (currentMode === 'click') { 
-        // 帶入座標
         document.getElementById('poi-lat').value = e.latlng.lat.toFixed(4); 
         document.getElementById('poi-lng').value = e.latlng.lng.toFixed(4); 
-        
-        // 點完後自動重新打開面板並展開新增區塊
         openPanel();
         const poiBtn = document.getElementById('coll-poi');
         if (!poiBtn.classList.contains('active')) {
@@ -270,11 +241,9 @@ map.on('click', (e) => {
             poiBtn.classList.add('active');
             poiBtn.nextElementSibling.style.maxHeight = poiBtn.nextElementSibling.scrollHeight + "px";
         }
-        
-        // 暫時切換回手動，避免重複點擊
-        setMode('manual');
+        setMode('manual'); // 點完後自動恢復手動/恢復國家互動
     } else {
-        if (window.innerWidth <= 768) { closePanel(); }
+        if (window.innerWidth <= 768) closePanel();
         closeAllTools();
         document.getElementById('footprint-panel').classList.remove('active');
     }
@@ -291,12 +260,13 @@ fetch('https://raw.githubusercontent.com/datasets/geo-boundaries-world-110m/mast
                 showPopup(e.latlng, f.properties.name); 
             }); } 
         }).addTo(map);
+        poiLayers.bringToFront();
         updateUI();
     });
 
 function styleFunc(feature) { 
     const isVisited = visitedCountries.some(c => c.originalName === feature.properties.name);
-    return { fillColor: isVisited ? mapSettings.visitColor : "#e9e9e9", weight: 1, color: "#ffffff", fillOpacity: 1 }; 
+    return { fillColor: isVisited ? mapSettings.visitColor : "#e9e9e9", weight: 1, color: "#ffffff", fillOpacity: 1, interactive: true }; 
 }
 
 function showPopup(latlng, originalName) {
@@ -346,13 +316,11 @@ function drawSmartLabels() {
 
 function addNewPOI() {
     const n = document.getElementById('poi-name').value, lt = parseFloat(document.getElementById('poi-lat').value), lg = parseFloat(document.getElementById('poi-lng').value);
-    if (!n || isNaN(lt) || isNaN(lg)) return alert("不完整！");
+    if (!n || isNaN(lt) || isNaN(lg)) return alert("資訊不完整！");
     customPOIs.push({ name: n, coords: [lt, lg] });
     if (!visitedCountries.some(v => v.originalName === n)) visitedCountries.push({ originalName: n, customName: n });
     saveData(); updateUI(); 
-    document.getElementById('poi-name').value = '';
-    document.getElementById('poi-lat').value = '';
-    document.getElementById('poi-lng').value = '';
+    document.getElementById('poi-name').value = ''; document.getElementById('poi-lat').value = ''; document.getElementById('poi-lng').value = '';
     alert("地點已新增！");
 }
 
@@ -360,7 +328,7 @@ function drawMarkers() {
     poiLayers.clearLayers();
     customPOIs.forEach(poi => {
         const v = visitedCountries.some(v => v.originalName === poi.name);
-        L.circleMarker(poi.coords, { radius: 2.5, fillColor: v ? mapSettings.visitColor : "#e9e9e9", color: mapSettings.visitColor, weight: 0, fillOpacity: 1, stroke: false }).addTo(poiLayers).on('click', (e) => { L.DomEvent.stopPropagation(e); closeAllTools(); showPopup(poi.coords, poi.name); });
+        L.circleMarker(poi.coords, { radius: 3, fillColor: v ? mapSettings.visitColor : "#e9e9e9", color: mapSettings.visitColor, weight: 1, fillOpacity: 1 }).addTo(poiLayers).on('click', (e) => { L.DomEvent.stopPropagation(e); closeAllTools(); showPopup(poi.coords, poi.name); });
     });
 }
 
@@ -372,19 +340,18 @@ function updateUI() {
     drawMarkers(); drawSmartLabels(); 
     const listEl = document.getElementById('country-list');
     listEl.innerHTML = visitedCountries.length > 0 ? visitedCountries.map(c => `<li onclick="focusCountry('${c.originalName}')"><span>📍 ${c.customName}</span><span class="edit-icon" onclick="event.stopPropagation(); editCountryName('${c.originalName}')">✎</span></li>`).join('') : '<li style="color:#999; text-align:center; padding: 20px;">尚未標記足跡</li>';
+    poiLayers.bringToFront();
 }
 
 function focusCountry(name) {
-    closePanel();
-    closeAllTools();
+    closePanel(); closeAllTools();
     let found = false;
     geoLayer.eachLayer(layer => { if (layer.feature.properties.name === name) { map.flyToBounds(layer.getBounds(), { padding: [50, 50], duration: 1.2 }); found = true; } });
     if (!found) { const poi = customPOIs.find(p => p.name === name); if (poi) map.flyTo(poi.coords, 8, { duration: 1.2 }); }
 }
 
 function resetView() {
-    closeAllTools();
-    closePanel();
+    closeAllTools(); closePanel();
     const worldBounds = L.latLngBounds(L.latLng(-85, -180), L.latLng(85, 180));
     map.fitBounds(worldBounds, { padding: [30, 30], animate: true, duration: 1.5 });
 }
