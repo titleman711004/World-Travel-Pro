@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>世界旅遊足跡</title>
+    <title>環遊世界</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -14,13 +14,15 @@
         body { margin: 0; font-family: "Microsoft JhengHei", sans-serif; overflow: hidden; background: #f5f6fa; }
         #map { height: 100vh; width: 100vw; background: #d1ecf1; }
         
+        /* 點選模式時的游標樣式 */
+        #map.picking-mode .leaflet-interactive { cursor: crosshair !important; }
+
         #loader {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
             z-index: 2000; background: rgba(0,0,0,0.7); color: white;
             padding: 15px 25px; display: block;
         }
 
-        /* --- 側邊面板 --- */
         .side-panel { position: fixed; z-index: 1001; transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
 
         @media (min-width: 769px) {
@@ -48,7 +50,6 @@
             .desktop-toggle { display: none; }
         }
 
-        /* --- 獨立足跡面板 --- */
         #footprint-panel {
             position: fixed; top: 85px; left: 20px; width: 320px;
             background: var(--panel-bg); z-index: 1005;
@@ -60,9 +61,6 @@
         #country-list { list-style: none; padding: 0; margin: 0; overflow-y: auto; flex-grow: 1; }
         #country-list li { padding: 12px 15px; border-bottom: 1px solid #f1f2f6; display: flex; align-items: center; justify-content: space-between; font-size: 14px; cursor: pointer; background: white; }
 
-        @media (max-width: 768px) { #footprint-panel { left: 0; width: 100%; top: auto; bottom: 45px; } }
-
-        /* --- 折疊面板 --- */
         .collapsible {
             background: transparent; color: var(--primary); cursor: pointer;
             padding: 15px 0; width: 100%; border: none; border-left: 4px solid var(--primary);
@@ -73,9 +71,8 @@
         .collapsible.active:after { content: "\2212"; }
         .collapsible-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-in-out; }
 
-        /* --- 按鈕組 --- */
         .btn-group-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; margin-bottom: 15px; }
-        .btn-top { padding: 12px 0; border: none; cursor: pointer; font-size: 12px; font-weight: bold; color: white; transition: 0.2s; text-align: center; }
+        .btn-top { padding: 10px 0; border: none; cursor: pointer; font-size: 12px; font-weight: bold; color: white; transition: 0.2s; text-align: center; }
         .btn-reset { background: #7f8c8d; }
         .btn-toggle-ui { background: #e67e22; }
         .btn-footprint { background: #ff4757; }
@@ -89,12 +86,10 @@
         .btn-load { background: #8395a7; }
         .btn-file:hover { filter: brightness(1.2); }
 
-        /* --- 輸入與標籤 --- */
         .custom-poi-box { background: #f4f4f4; padding: 12px; border: 1px dashed #ccc; margin: 5px 0 10px 0; }
         .input-row { display: flex; gap: 5px; margin-bottom: 5px; width: 100%; }
         .input-row input { flex: 1; min-width: 0; padding: 10px; border: 1px solid #ddd; font-size: 13px; }
         .popup-btn { background: var(--primary); color: white; border: none; padding: 12px; cursor: pointer; width: 100%; font-weight: bold; }
-        .edit-icon { color: var(--primary); font-size: 16px; padding: 5px; opacity: 0.5; }
         .copyright { margin-top: 15px; padding: 10px 0; font-size: 10px; color: #999; text-align: center; }
         .country-label { background: rgba(255, 255, 255, 0.95); border: 1px solid #444; padding: 2px 5px; border-radius: 2px; font-weight: bold; white-space: nowrap; pointer-events: none; box-shadow: 2px 2px 5px rgba(0,0,0,0.2); color: #222; }
     </style>
@@ -116,7 +111,7 @@
 
 <div class="mobile-handle" id="mobile-trigger" onclick="togglePanel()">展開工具 ➕</div>
 
-<div class="side-panel" id="ui-panel">
+<div class="side-panel collapsed" id="ui-panel">
     <div class="panel-content">
         <button class="popup-btn" style="background:#7f8c8d; margin-bottom:15px;" onclick="togglePanel()">收合工具 ✕</button>
 
@@ -130,10 +125,10 @@
         <div class="collapsible-content">
             <div class="custom-poi-box">
                 <div style="display:flex; gap:5px; margin-bottom:10px;">
-                    <button id="mode-click" class="btn-top" style="background:var(--primary); flex:1;" onclick="setMode('click')">📍 點選</button>
-                    <button id="mode-manual" class="btn-top" style="background:#7f8c8d; flex:1;" onclick="setMode('manual')">⌨️ 手動</button>
+                    <button id="mode-click" class="btn-top" style="background:#7f8c8d; flex:1;" onclick="setMode('click')">📍 點選</button>
+                    <button id="mode-manual" class="btn-top" style="background:var(--primary); flex:1;" onclick="setMode('manual')">⌨️ 手動</button>
                 </div>
-                <p id="click-tip" style="font-size: 11px; color: #e67e22; margin: 0 0 8px 0; display: none;">* 已暫停國家點擊功能，請直接點選地圖</p>
+                <p id="click-tip" style="font-size: 11px; color: #e67e22; margin: 0 0 8px 0; display: none;">* 國家點擊已關閉，請直接點選地圖</p>
                 <input type="text" id="poi-name" placeholder="名稱 (如：澳門)" style="width:100%; padding:10px; margin-bottom:5px; border: 1px solid #ddd;">
                 <div id="manual-inputs">
                     <div class="input-row">
@@ -196,7 +191,7 @@ function autoFitWorld() {
 autoFitWorld();
 poiLayers.addTo(map); labelLayer.addTo(map); lineLayer.addTo(map);
 
-// --- 面板邏輯 ---
+// --- 面板控制 ---
 function toggleFootprint() { document.getElementById('footprint-panel').classList.toggle('active'); closeAllTools(); }
 function togglePanel() { const p = document.getElementById('ui-panel'); if (window.innerWidth <= 768) p.classList.toggle('open'); else p.classList.toggle('collapsed'); }
 function openPanel() { const p = document.getElementById('ui-panel'); if (window.innerWidth <= 768) { p.classList.add('open'); document.getElementById('mobile-trigger').style.display = 'none'; } else { p.classList.remove('collapsed'); } }
@@ -212,20 +207,22 @@ document.querySelectorAll('.collapsible').forEach(button => {
     });
 });
 
-// --- 核心修正：點選模式邏輯 ---
+// --- 核心修正：點選模式邏輯 (包含游標控制) ---
 function setMode(mode) {
     currentMode = mode;
     document.getElementById('mode-click').style.background = (mode === 'click' ? 'var(--primary)' : '#7f8c8d');
     document.getElementById('mode-manual').style.background = (mode === 'manual' ? 'var(--primary)' : '#7f8c8d');
     
+    const mapDiv = document.getElementById('map');
     if(mode === 'click') {
         document.getElementById('click-tip').style.display = 'block';
-        // 暫停國家的互動事件
+        mapDiv.classList.add('picking-mode'); // 加入 CSS class 改變游標
+        // 徹底禁用國家圖層互動，避免手型出現
         if (geoLayer) geoLayer.setStyle({ interactive: false });
         setTimeout(closePanel, 300);
     } else {
         document.getElementById('click-tip').style.display = 'none';
-        // 恢復國家的互動事件
+        mapDiv.classList.remove('picking-mode');
         if (geoLayer) geoLayer.setStyle({ interactive: true });
     }
 }
@@ -241,7 +238,7 @@ map.on('click', (e) => {
             poiBtn.classList.add('active');
             poiBtn.nextElementSibling.style.maxHeight = poiBtn.nextElementSibling.scrollHeight + "px";
         }
-        setMode('manual'); // 點完後自動恢復手動/恢復國家互動
+        setMode('manual'); // 點完自動切回，恢復手型功能
     } else {
         if (window.innerWidth <= 768) closePanel();
         closeAllTools();
@@ -316,7 +313,7 @@ function drawSmartLabels() {
 
 function addNewPOI() {
     const n = document.getElementById('poi-name').value, lt = parseFloat(document.getElementById('poi-lat').value), lg = parseFloat(document.getElementById('poi-lng').value);
-    if (!n || isNaN(lt) || isNaN(lg)) return alert("資訊不完整！");
+    if (!n || isNaN(lt) || isNaN(lg)) return alert("不完整！");
     customPOIs.push({ name: n, coords: [lt, lg] });
     if (!visitedCountries.some(v => v.originalName === n)) visitedCountries.push({ originalName: n, customName: n });
     saveData(); updateUI(); 
